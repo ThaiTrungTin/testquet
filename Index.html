@@ -29,6 +29,12 @@
             50% { top: 99%; }
             100% { top: 0; }
         }
+        /* Style cho video camera để lấp đầy khung chứa */
+        #qr-reader video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
@@ -93,14 +99,11 @@
                 beepSound.play();
                 updateResult(`Đang xử lý mã: ${decodedText}`);
 
-                // *** PHẦN SỬA LỖI ***
-                // Đã xóa 'mode: no-cors' để trình duyệt có thể nhận phản hồi từ server.
-                // Đây là nguyên nhân chính gây ra lỗi "không nạp được".
                 fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
-                    redirect: 'follow', // Thêm dòng này để xử lý chuyển hướng nếu có
+                    redirect: 'follow',
                     headers: {
-                        'Content-Type': 'text/plain;charset=utf-8', // Đổi kiểu nội dung để tương thích tốt hơn
+                        'Content-Type': 'text/plain;charset=utf-8',
                     },
                     body: JSON.stringify({ code: decodedText })
                 })
@@ -121,20 +124,29 @@
                     setTimeout(() => {
                         isProcessing = false;
                         lastScannedCode = null; 
-                    }, 2000); 
+                    }, 500);
                 });
             }
             
             function onScanFailure(error) {
-                // Thường không cần hiển thị lỗi này vì camera liên tục quét
+                // Không cần làm gì ở đây vì camera quét liên tục
             }
 
-            let html5QrcodeScanner = new Html5QrcodeScanner(
-                "qr-reader", 
-                { fps: 10, qrbox: {width: 250, height: 250}, facingMode: "environment" },
-                false
-            );
-            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+            // *** THAY ĐỔI: Sử dụng cách mới để khởi động camera trực tiếp ***
+            const html5QrCode = new Html5Qrcode("qr-reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            // Bắt đầu quét bằng camera sau. 
+            // Thư viện sẽ tự động xử lý yêu cầu quyền truy cập của trình duyệt.
+            html5QrCode.start(
+                { facingMode: "environment" }, // Yêu cầu camera sau
+                config,
+                onScanSuccess,
+                onScanFailure
+            ).catch(err => {
+                console.error(`Không thể khởi động trình quét: ${err}`);
+                updateResult("Lỗi: Không thể bật camera sau.", true);
+            });
         });
     </script>
 </body>
