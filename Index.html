@@ -1,141 +1,217 @@
 <!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
+<html>
+  <head>
+    <base target="_top">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trình Quét Mã Đơn Hàng</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <title>Bảng điều khiển</title>
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        #scanned-list {
-            max-height: 250px;
-            overflow-y: auto;
-        }
-        .laser {
-            position: absolute;
-            top: 50%;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background-color: red;
-            box-shadow: 0 0 10px red;
-            animation: scanning 1.5s infinite linear;
-        }
-        @keyframes scanning {
-            0% { top: 0; }
-            50% { top: 99%; }
-            100% { top: 0; }
-        }
-        #qr-reader video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+      :root {
+        --sidebar-width: 260px;
+        --transition-speed: 0.3s;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+        margin: 0; display: flex; height: 100vh; background-color: #f7f9fc; overflow: hidden;
+      }
+      .sidebar {
+        width: var(--sidebar-width); background-color: #ffffff; box-shadow: 2px 0 5px rgba(0,0,0,0.05); display: flex;
+        flex-direction: column; padding: 20px 10px; flex-shrink: 0; z-index: 10;
+        transition: margin-left var(--transition-speed) ease-in-out; margin-left: 0;
+      }
+      .sidebar.collapsed { margin-left: calc(-1 * var(--sidebar-width)); }
+      .sidebar-header { text-align: center; padding: 0 10px 20px 10px; margin-bottom: 10px; border-bottom: 1px solid #e0e0e0; }
+      .sidebar-header h2 { margin: 0; color: #4285F4; font-size: 22px; }
+      .nav-list { flex-grow: 1; overflow-y: auto; }
+      .nav-item { position: relative; }
+      .nav-button {
+        background-color: transparent; color: #3c4043; border: none; padding: 15px 20px; font-size: 16px;
+        font-weight: 500; border-radius: 8px; cursor: pointer; transition: background-color 0.2s, color 0.2s;
+        width: 100%; text-align: left; margin-bottom: 8px; display: block;
+      }
+      .nav-button:hover { background-color: #f1f3f4; }
+      .nav-button.active { background-color: #e8f0fe; color: #1967d2; font-weight: bold; }
+      .delete-app-btn {
+        position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: none; border: none;
+        cursor: pointer; opacity: 0; transition: opacity 0.2s; padding: 5px; border-radius: 50%;
+      }
+      .nav-item:hover .delete-app-btn { opacity: 0.6; }
+      .delete-app-btn:hover { opacity: 1; background-color: #e0e0e0; }
+      .sidebar-footer { padding-top: 10px; border-top: 1px solid #e0e0e0; }
+      .add-app-btn { font-weight: 500; color: #1967d2; }
+      .modal-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+        display: none; justify-content: center; align-items: center; z-index: 2000;
+      }
+      .modal-content { background: white; padding: 25px 30px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+      .modal-content h3 { margin-top: 0; }
+      .modal-content input { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+      .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+      .modal-actions button { padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; }
+      #save-app-btn { background-color: #4285F4; color: white; }
+      #cancel-add-app-btn { background-color: #f1f3f4; }
+      .main-content { flex-grow: 1; position: relative; }
+      .menu-toggle-btn {
+        position: fixed; top: 15px; left: 15px; background: #ffffff; border: none; cursor: pointer;
+        padding: 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        transition: left var(--transition-speed) ease-in-out; box-shadow: 0 2px 6px rgba(0,0,0,0.15); z-index: 1000;
+      }
+      body.sidebar-open .menu-toggle-btn { left: calc(var(--sidebar-width) + 15px); }
+
+      #iframe-container {
+        width: 100%;
+        height: 100%;
+        position: relative;
+      }
+      .app-iframe {
+        border: none;
+        width: 100%;
+        height: 100%;
+        position: absolute; 
+        top: 0;
+        left: 0;
+        display: none; 
+      }
+      .app-iframe.active {
+        display: block; 
+      }
     </style>
-</head>
-<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+  </head>
+  <body class="sidebar-open">
 
-    <div class="w-full max-w-md bg-gray-800 rounded-2xl shadow-lg p-6 text-center">
-        <h1 class="text-3xl font-bold mb-2">Trình Quét Mã Đơn Hàng</h1>
-        <p class="text-gray-400 mb-6">Đưa mã vạch hoặc QR code vào khung để tự động quét.</p>
+    <button id="menu-toggle" class="menu-toggle-btn" title="Đóng/Mở menu (phím ESC)">
+      <svg width="24" height="24" viewBox="0 0 24 24"><path d="M3 12H21" stroke="#3c4043" stroke-width="2" stroke-linecap="round"/><path d="M3 6H21" stroke="#3c4043" stroke-width="2" stroke-linecap="round"/><path d="M3 18H21" stroke="#3c4043" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    
+    <div class="sidebar">
+      <div class="sidebar-header"><h2>Menu</h2></div>
+      <div id="nav-list" class="nav-list"></div>
+      <div class="sidebar-footer"><button class="nav-button add-app-btn" onclick="openAddAppModal()">+ Thêm App</button></div>
+    </div>
 
-        <div id="qr-reader" class="w-full h-64 md:h-80 bg-gray-700 rounded-lg overflow-hidden relative border-2 border-gray-600 transition-all duration-300">
-            <div class="laser"></div>
-        </div>
-        
-        <!-- Đã xóa ô hiển thị trạng thái -->
-
-        <div class="mt-6 w-full">
-            <h2 class="text-xl font-semibold mb-3">Lịch sử quét gần đây</h2>
-            <ul id="scanned-list" class="bg-gray-700 rounded-lg p-3 text-left space-y-2">
-                <li class="text-gray-500 italic">Chưa có mã nào được quét...</li>
-            </ul>
-        </div>
+    <div class="main-content">
+        <div id="iframe-container"></div>
     </div>
     
+    <div id="add-app-modal" class="modal-overlay">
+      <div class="modal-content">
+        <h3>Thêm ứng dụng mới</h3>
+        <input type="text" id="new-app-name" placeholder="Nhập tên ứng dụng">
+        <input type="url" id="new-app-url" placeholder="Dán URL ứng dụng web">
+        <div class="modal-actions">
+          <button id="cancel-add-app-btn" onclick="closeAddAppModal()">Hủy</button>
+          <button id="save-app-btn" onclick="saveNewApp()">Lưu</button>
+        </div>
+      </div>
+    </div>
+
     <script>
-        document.addEventListener('DOMContentLoaded', (event) => {
-            const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxH3sE9lgskgyJsNQsPf3D_c7xNLuJsNF2pm6BSRObSCQ5ABzyhZWm0Zst3xWYAUZm_IA/exec';
+      const iframeContainer = document.getElementById('iframe-container');
+      const toggleBtn = document.getElementById('menu-toggle');
+      const sidebar = document.querySelector('.sidebar');
+      const navList = document.getElementById('nav-list');
+      const modal = document.getElementById('add-app-modal');
+      let appList = [];
 
-            const qrReaderDiv = document.getElementById('qr-reader');
-            const scannedList = document.getElementById('scanned-list');
-            let lastScannedCode = null;
-            let isProcessing = false;
-            const beepSound = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU"+Array(1e3).join("123"));
-            
-            function addToScannedList(code) {
-                if(scannedList.querySelector('.italic')) {
-                    scannedList.innerHTML = '';
-                }
-                const li = document.createElement('li');
-                li.className = "bg-gray-800 p-2 rounded-md flex justify-between items-center animate-pulse once";
-                li.innerHTML = `<span>${code}</span><span class="text-xs text-gray-400">${new Date().toLocaleTimeString()}</span>`;
-                scannedList.prepend(li);
-            }
+      const defaultApps = [
+        { name: "WareHouse", url: "https://script.google.com/macros/s/AKfycbztF4W6WHWAHmluhINyDbrXYfk62Pq_ODOejCI6UaSVL9vMIEdUPiv90DHZPDm8kQ0t/exec" },
+        { name: "Scan & Export", url: "https://script.google.com/macros/s/AKfycbzyhcLvg4ZVhexKSP8m3dLjVqp2HSnJq4HRYkrytzlc04f33pzEW-hW0T4vDBdYdFp-4Q/exec" }
+      ];
 
-            function onScanSuccess(decodedText, decodedResult) {
-                if (isProcessing || decodedText === lastScannedCode) {
-                    return;
-                }
-                
-                isProcessing = true;
-                lastScannedCode = decodedText;
-                beepSound.play();
-                // Không cập nhật UI trạng thái nữa
+      function renderAppInfrastructure() {
+        navList.innerHTML = '';
+        iframeContainer.innerHTML = '';
+        appList.forEach((app, index) => {
+          const navItem = document.createElement('div');
+          navItem.className = 'nav-item';
+          const button = document.createElement('button');
+          button.id = `btnApp${index}`;
+          button.className = 'nav-button';
+          button.textContent = app.name;
+          button.onclick = () => showApp(index);
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'delete-app-btn';
+          deleteBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#5f6368" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
+          deleteBtn.title = `Xóa ${app.name}`;
+          deleteBtn.onclick = (e) => { e.stopPropagation(); deleteApp(index); };
+          navItem.appendChild(button);
+          navItem.appendChild(deleteBtn);
+          navList.appendChild(navItem);
 
-                fetch(APPS_SCRIPT_URL, {
-                    method: 'POST',
-                    redirect: 'follow',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ code: decodedText })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        addToScannedList(decodedText);
-                    } else {
-                        throw new Error(data.message || 'Lỗi không xác định.');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    // Hiển thị lỗi bằng cách nhấp nháy viền đỏ
-                    qrReaderDiv.classList.remove('border-gray-600');
-                    qrReaderDiv.classList.add('border-red-500');
-                    setTimeout(() => {
-                        qrReaderDiv.classList.remove('border-red-500');
-                        qrReaderDiv.classList.add('border-gray-600');
-                    }, 1000);
-                })
-                .finally(() => {
-                    setTimeout(() => {
-                        isProcessing = false;
-                        lastScannedCode = null; 
-                    }, 500);
-                });
-            }
-            
-            function onScanFailure(error) {
-                // Không cần làm gì
-            }
-
-            const html5QrCode = new Html5Qrcode("qr-reader");
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-
-            html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                onScanSuccess,
-                onScanFailure
-            ).catch(err => {
-                console.error(`Không thể khởi động trình quét: ${err}`);
-                qrReaderDiv.innerHTML = `<p class="p-4 text-red-400">Lỗi: Không thể bật camera sau.</p>`;
-            });
+          const iframe = document.createElement('iframe');
+          iframe.id = `iframe-app-${index}`;
+          iframe.className = 'app-iframe';
+          iframe.src = app.url;
+          iframe.title = app.name;
+          iframeContainer.appendChild(iframe);
         });
-    </script>
-</body>
-</html>
+      }
 
+      function showApp(index) {
+        document.querySelectorAll('.app-iframe').forEach(iframe => iframe.classList.remove('active'));
+        document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+
+        const targetIframe = document.getElementById(`iframe-app-${index}`);
+        const targetButton = document.getElementById(`btnApp${index}`);
+        if (targetIframe) targetIframe.classList.add('active');
+        if (targetButton) targetButton.classList.add('active');
+      }
+      
+      function saveAppsToStorage() { localStorage.setItem('customAppList', JSON.stringify(appList)); }
+      function loadAppsFromStorage() {
+        const savedApps = localStorage.getItem('customAppList');
+        appList = savedApps ? JSON.parse(savedApps) : [...defaultApps];
+      }
+
+      function openAddAppModal() { modal.style.display = 'flex'; }
+      function closeAddAppModal() { modal.style.display = 'none'; }
+      
+      function saveNewApp() {
+        const nameInput = document.getElementById('new-app-name');
+        const urlInput = document.getElementById('new-app-url');
+        if (nameInput.value.trim() && urlInput.value.trim()) {
+          appList.push({ name: nameInput.value.trim(), url: urlInput.value.trim() });
+          saveAppsToStorage();
+          renderAppInfrastructure();
+          showApp(appList.length - 1);
+          nameInput.value = ''; urlInput.value = ''; closeAddAppModal();
+        } else { alert('Vui lòng nhập đầy đủ Tên và URL.'); }
+      }
+      
+      function deleteApp(index) {
+        if (confirm(`Bạn có chắc muốn xóa ứng dụng "${appList[index].name}" không?`)) {
+          const isDeletingActiveApp = document.getElementById(`btnApp${index}`).classList.contains('active');
+          appList.splice(index, 1);
+          saveAppsToStorage();
+          renderAppInfrastructure();
+          if (isDeletingActiveApp && appList.length > 0) {
+            showApp(0);
+          }
+        }
+      }
+
+      function toggleSidebar() {
+        sidebar.classList.toggle('collapsed');
+        document.body.classList.toggle('sidebar-open');
+      }
+
+      toggleBtn.addEventListener('click', toggleSidebar);
+
+      window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          if (modal.style.display !== 'flex') {
+            toggleSidebar();
+          }
+        }
+      });
+
+      document.addEventListener("DOMContentLoaded", function() {
+        loadAppsFromStorage();
+        renderAppInfrastructure();
+        if (appList.length > 0) {
+          showApp(0);
+        }
+      });
+    </script>
+
+  </body>
+</html>
