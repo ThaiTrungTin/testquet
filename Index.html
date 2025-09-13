@@ -3,231 +3,140 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quét Mã Đơn Hàng</title>
-    <!-- Sử dụng Tailwind CSS để có giao diện đẹp và đáp ứng nhanh chóng -->
+    <title>Trình Quét Mã Đơn Hàng</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
-        /* Tùy chỉnh nhỏ cho giao diện */
         body {
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            touch-action: manipulation; /* Tối ưu hóa cho cảm ứng */
+            font-family: 'Inter', sans-serif;
         }
-
-        #reader {
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 12px;
-            overflow: hidden;
-            position: relative;
+        #qr-reader-results, #scanned-list {
+            max-height: 200px;
+            overflow-y: auto;
         }
-
-        /* Tạo hiệu ứng tia laser quét */
-        #reader__scan_region:after {
-            content: '';
+        .laser {
             position: absolute;
-            top: 0;
+            top: 50%;
             left: 0;
             width: 100%;
             height: 2px;
-            background: #ef4444; /* Màu đỏ nổi bật */
-            box-shadow: 0 0 10px #ef4444, 0 0 20px #ef4444;
-            animation: scanning 2s infinite linear;
+            background-color: red;
+            box-shadow: 0 0 10px red;
+            animation: scanning 1.5s infinite linear;
         }
-
         @keyframes scanning {
-            0% {
-                transform: translateY(0);
-            }
-            100% {
-                transform: translateY(calc(100% - 2px));
-            }
-        }
-        
-        /* Hiệu ứng mờ dần cho thông báo */
-        .fade-out {
-            animation: fadeOut 3s forwards;
-        }
-
-        @keyframes fadeOut {
-            from { opacity: 1; }
-            to { opacity: 0; }
+            0% { top: 0; }
+            50% { top: 99%; }
+            100% { top: 0; }
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4 font-sans">
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div class="w-full max-w-md mx-auto text-center">
+    <div class="w-full max-w-md bg-gray-800 rounded-2xl shadow-lg p-6 text-center">
         <h1 class="text-3xl font-bold mb-2">Trình Quét Mã Đơn Hàng</h1>
-        <p class="text-gray-400 mb-4">Đưa mã vạch hoặc QR code vào khung để tự động quét.</p>
-        
-        <!-- Phần hiển thị camera -->
-        <div id="reader" class="w-full aspect-square bg-gray-800 rounded-lg shadow-lg"></div>
+        <p class="text-gray-400 mb-6">Đưa mã vạch hoặc QR code vào khung để tự động quét.</p>
 
-        <!-- Khu vực hiển thị kết quả và trạng thái -->
-        <div id="status-container" class="mt-4 w-full h-16">
-            <div id="result" class="bg-blue-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-all duration-300">
-                Đang khởi tạo camera...
-            </div>
+        <div id="qr-reader" class="w-full h-64 md:h-80 bg-gray-700 rounded-lg overflow-hidden relative border-2 border-gray-600">
+            <div class="laser"></div>
         </div>
+        
+        <div id="result" class="mt-4 p-3 rounded-lg text-sm font-medium h-12 flex items-center justify-center transition-all duration-300"></div>
 
-        <!-- Lịch sử các mã đã quét -->
-        <div class="mt-4 w-full">
-            <h2 class="text-xl font-semibold mb-2">Lịch sử quét gần đây</h2>
-            <ul id="scanned-list" class="bg-gray-800 rounded-lg p-3 h-40 overflow-y-auto flex flex-col-reverse">
-                <li class="text-gray-500 text-center">Chưa có mã nào được quét.</li>
+        <div class="mt-6 w-full">
+            <h2 class="text-xl font-semibold mb-3">Lịch sử quét gần đây</h2>
+            <ul id="scanned-list" class="bg-gray-700 rounded-lg p-3 text-left space-y-2">
+                <li class="text-gray-500 italic">Chưa có mã nào được quét...</li>
             </ul>
         </div>
     </div>
-
-    <!-- Thư viện quét mã vạch -->
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-
+    
     <script>
         document.addEventListener('DOMContentLoaded', (event) => {
-            // !!! QUAN TRỌNG: Dán URL ứng dụng web Apps Script của bạn vào đây
             const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxH3sE9lgskgyJsNQsPf3D_c7xNLuJsNF2pm6BSRObSCQ5ABzyhZWm0Zst3xWYAUZm_IA/exec';
 
             const resultDiv = document.getElementById('result');
             const scannedList = document.getElementById('scanned-list');
             let lastScannedCode = null;
             let isProcessing = false;
+            const beepSound = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU"+Array(1e3).join("123"));
 
-            // Hàm tạo âm thanh 'bíp' khi quét thành công
-            function playBeep() {
-                try {
-                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const oscillator = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-                    gainNode.gain.value = 0.1;
-                    oscillator.frequency.value = 880;
-                    oscillator.type = 'sine';
-                    oscillator.start();
-                    setTimeout(() => oscillator.stop(), 100);
-                } catch (e) {
-                    console.error("Không thể phát âm thanh:", e);
+            function updateResult(message, isError = false) {
+                resultDiv.textContent = message;
+                resultDiv.classList.remove('bg-green-500', 'bg-red-500', 'bg-yellow-500', 'text-green-100', 'text-red-100', 'text-yellow-100');
+                if (isError) {
+                    resultDiv.classList.add('bg-red-500', 'text-red-100');
+                } else if (message.includes('thành công')) {
+                     resultDiv.classList.add('bg-green-500', 'text-green-100');
+                } else if (message) {
+                    resultDiv.classList.add('bg-yellow-500', 'text-yellow-100');
                 }
             }
             
-            // Hàm hiển thị trạng thái
-            function showStatus(message, type = 'info') {
-                const colors = {
-                    info: 'bg-blue-500',
-                    success: 'bg-green-500',
-                    error: 'bg-red-500',
-                    processing: 'bg-yellow-500'
-                };
-                resultDiv.textContent = message;
-                resultDiv.className = `text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-all duration-300 ${colors[type] || colors['info']}`;
+            function addToScannedList(code) {
+                if(scannedList.querySelector('.italic')) {
+                    scannedList.innerHTML = '';
+                }
+                const li = document.createElement('li');
+                li.className = "bg-gray-800 p-2 rounded-md flex justify-between items-center";
+                li.innerHTML = `<span>${code}</span><span class="text-xs text-gray-400">${new Date().toLocaleTimeString()}</span>`;
+                scannedList.prepend(li);
             }
 
-            // Hàm được gọi khi quét mã thành công
-            async function onScanSuccess(decodedText, decodedResult) {
+            function onScanSuccess(decodedText, decodedResult) {
                 if (isProcessing || decodedText === lastScannedCode) {
                     return;
                 }
                 
-                if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE') {
-                    showStatus('Lỗi: Chưa cấu hình URL của Apps Script!', 'error');
-                    return;
-                }
-
                 isProcessing = true;
                 lastScannedCode = decodedText;
-                
-                playBeep();
-                showStatus(`Đang gửi mã: ${decodedText}`, 'processing');
+                beepSound.play();
+                updateResult(`Đang xử lý mã: ${decodedText}`);
 
-                // **THAY ĐỔI: Sử dụng fetch để gửi dữ liệu đến Apps Script Web App**
-                try {
-                    const response = await fetch(APPS_SCRIPT_URL, {
-                        method: 'POST',
-                        mode: 'cors', // Cần thiết cho các yêu cầu từ tên miền khác
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ code: decodedText }),
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`Lỗi HTTP: ${response.status}`);
-                    }
-
-                    const result = await response.json();
-
-                    if (result.status === 'success') {
-                        onServerSuccess(result.message);
-                    } else {
-                        onServerFailure({ message: result.message });
-                    }
-
-                } catch (error) {
-                    onServerFailure(error);
-                }
-            }
-            
-            function onServerSuccess(responseMessage) {
-                showStatus(responseMessage, 'success');
-                addToList(lastScannedCode);
-                resetScannerState();
-            }
-
-            function onServerFailure(error) {
-                showStatus(`Lỗi: ${error.message}`, 'error');
-                resetScannerState();
-            }
-
-            function resetScannerState() {
-                setTimeout(() => {
-                    lastScannedCode = null; 
-                    isProcessing = false;
-                    setTimeout(() => {
-                        if (!isProcessing) {
-                           showStatus('Sẵn sàng quét...', 'info');
-                        }
-                    }, 1500);
-                }, 2000);
-            }
-
-            function addToList(code) {
-                const placeholder = scannedList.querySelector('.text-gray-500');
-                if (placeholder) placeholder.remove();
-
-                const li = document.createElement('li');
-                li.className = 'text-green-400 p-2 border-b border-gray-700';
-                
-                const codeText = document.createElement('span');
-                codeText.className = 'font-mono';
-                codeText.textContent = code;
-
-                const timeText = document.createElement('span');
-                timeText.className = 'text-xs text-gray-400 float-right pt-1';
-                timeText.textContent = new Date().toLocaleTimeString();
-
-                li.appendChild(codeText);
-                li.appendChild(timeText);
-                scannedList.prepend(li);
-            }
-            
-            const html5Qrcode = new Html5Qrcode("reader");
-            const config = { 
-                fps: 10, 
-                qrbox: { width: 250, height: 250 },
-                facingMode: "environment" 
-            };
-
-            html5Qrcode.start({ facingMode: "environment" }, config, onScanSuccess)
-                .then(() => {
-                     showStatus('Sẵn sàng quét...', 'info');
+                // *** PHẦN SỬA LỖI ***
+                // Đã xóa 'mode: no-cors' để trình duyệt có thể nhận phản hồi từ server.
+                // Đây là nguyên nhân chính gây ra lỗi "không nạp được".
+                fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    redirect: 'follow', // Thêm dòng này để xử lý chuyển hướng nếu có
+                    headers: {
+                        'Content-Type': 'text/plain;charset=utf-8', // Đổi kiểu nội dung để tương thích tốt hơn
+                    },
+                    body: JSON.stringify({ code: decodedText })
                 })
-                .catch(err => {
-                    console.error("Không thể khởi động camera:", err);
-                    showStatus(`Lỗi Camera: ${err}`, 'error');
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateResult(`Quét thành công: ${decodedText}`);
+                        addToScannedList(decodedText);
+                    } else {
+                        throw new Error(data.message || 'Lỗi không xác định từ server.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    updateResult(`Lỗi: ${error.message}`, true);
+                })
+                .finally(() => {
+                    setTimeout(() => {
+                        isProcessing = false;
+                        lastScannedCode = null; 
+                    }, 2000); 
                 });
+            }
+            
+            function onScanFailure(error) {
+                // Thường không cần hiển thị lỗi này vì camera liên tục quét
+            }
+
+            let html5QrcodeScanner = new Html5QrcodeScanner(
+                "qr-reader", 
+                { fps: 10, qrbox: {width: 250, height: 250}, facingMode: "environment" },
+                false
+            );
+            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
         });
     </script>
 </body>
 </html>
-
 
